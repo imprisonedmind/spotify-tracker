@@ -1,96 +1,110 @@
-"use client"
+// FILE: components/layout/base-grouped-display.tsx
+"use client";
 
-import { useState, useEffect, type ReactNode } from "react"
-import { Calendar } from "lucide-react"
-import { SectionSkeleton } from "@/components/skeletons/section-skeleton"
-import { getDayCategory } from "@/lib/spotify-api"
+import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { Calendar } from "lucide-react";
+import { SectionSkeleton } from "@/components/skeletons/section-skeleton";
+import { getDateDisplayInfo } from "@/lib/spotify-api";
 
 interface BaseGroupedDisplayProps<T> {
-  items: T[]
-  getDateString: (item: T) => string | undefined
-  renderItem: (item: T, showTimeAgo: boolean) => ReactNode
-  emptyState: ReactNode
-  isLoading?: boolean
+  items: T[];
+  getDateString: (item: T) => string | undefined;
+  /** Updated: Function to render a single item, now receives an `isToday` flag */
+  renderItem: (item: T, isToday: boolean) => ReactNode;
+  emptyState: ReactNode;
+  isLoading?: boolean;
+  getItemKey: (item: T) => string | number;
 }
 
-export function BaseGroupedDisplay<T extends { id: string }>({
+interface GroupedData<T> {
+  display: string;
+  sortDate: Date;
+  items: T[];
+}
+
+export function BaseGroupedDisplay<T>({
   items,
   getDateString,
-  renderItem,
+  renderItem, // Updated prop
   emptyState,
   isLoading = false,
+  getItemKey,
 }: BaseGroupedDisplayProps<T>) {
-  const [groupedItems, setGroupedItems] = useState<Record<string, T[]>>({})
-  const [isInitializing, setIsInitializing] = useState(true)
+  const [groupedDataMap, setGroupedDataMap] = useState<
+    Record<string, GroupedData<T>>
+  >({});
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // Group items by day category
-    const grouped: Record<string, T[]> = {}
+    setIsInitializing(true);
+    const newGroupedData: Record<string, GroupedData<T>> = {};
 
     items.forEach((item) => {
-      const dateString = getDateString(item)
-      if (!dateString) return
-
-      const category = getDayCategory(dateString)
-      if (!grouped[category]) {
-        grouped[category] = []
+      const dateString = getDateString(item);
+      if (!dateString) {
+        console.warn("Item missing date string, skipping grouping:", item);
+        return;
       }
-      grouped[category].push(item)
-    })
+      try {
+        const { display, sortDate } = getDateDisplayInfo(dateString);
+        if (!newGroupedData[display]) {
+          newGroupedData[display] = { display, sortDate, items: [] };
+        }
+        newGroupedData[display].items.push(item);
+      } catch (error) {
+        console.error(
+          `Error processing date "${dateString}" for item:`,
+          item,
+          error,
+        );
+      }
+    });
 
-    setGroupedItems(grouped)
-    setIsInitializing(false)
-  }, [items, getDateString])
+    setGroupedDataMap(newGroupedData);
+    setIsInitializing(false);
+  }, [items, getDateString]);
+
+  const sortedGroups = useMemo(() => {
+    return Object.values(groupedDataMap).sort(
+      (a, b) => b.sortDate.getTime() - a.sortDate.getTime(),
+    );
+  }, [groupedDataMap]);
 
   if (isLoading || isInitializing) {
-    return <SectionSkeleton count={3} />
+    return <SectionSkeleton count={3} />;
   }
 
-  if (!items.length) {
-    return emptyState
+  if (!items.length || sortedGroups.length === 0) {
+    return emptyState;
   }
-
-  // Order for day categories
-  const categoryOrder = [
-    "Today",
-    "Yesterday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-  ]
 
   return (
     <div className="space-y-6">
-      {categoryOrder.map((category) => {
-        if (!groupedItems[category] || groupedItems[category].length === 0) return null
-
-        return (
-          <div key={category} className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-lavender-500 dark:text-lavender-400" />
-              <h2 className="text-base font-medium">
-                {category} <span className="text-muted-foreground text-sm">({groupedItems[category].length})</span>
-              </h2>
-            </div>
-            <div className="space-y-2">
-              {groupedItems[category].map((item) => (
-                <div key={getItemKey(item, category)}>{renderItem(item, category === "Today")}</div>
-              ))}
-            </div>
+      {sortedGroups.map((group) => (
+        <div key={group.display} className="space-y-2">
+          <div className="flex items-center gap-2 pt-2">
+            <Calendar className="h-4 w-4 flex-shrink-0 text-lavender-500 dark:text-lavender-400" />
+            <h2 className="text-base font-medium">
+              {group.display}{" "}
+              <span className="text-sm font-normal text-muted-foreground">
+                ({group.items.length})
+              </span>
+            </h2>
           </div>
-        )
-      })}
+          <div className="space-y-2">
+            {group.items.map((item) => {
+              // Determine if the current group is "Today"
+              const isToday = group.display === "Today";
+              return (
+                <div key={getItemKey(item)}>
+                  {/* Pass the isToday flag to the renderItem function */}
+                  {renderItem(item, isToday)}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
-  )
-}
-
-// Helper function to generate a unique key for each item
-function getItemKey(item: any, category: string): string {
-  // Try to use various date fields that might exist on the item
-  const dateField = item.added_at || item.played_at || item.liked_at || item.followed_at
-  return `${item.id}-${dateField}-${category}`
+  );
 }

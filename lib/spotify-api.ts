@@ -1,284 +1,275 @@
+// FILE: lib/spotify-api.ts
+
+import { Buffer } from "buffer"; // Ensure Buffer is available
+
 // Base URLs for Spotify API
-const SPOTIFY_API_BASE = "https://api.spotify.com/v1"
-const SPOTIFY_ACCOUNTS_BASE = "https://accounts.spotify.com/api/token"
+const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
+const SPOTIFY_ACCOUNTS_BASE = "https://accounts.spotify.com/api/token";
 
 // Cache duration in seconds (3 minutes)
-export const CACHE_DURATION = 180
+export const CACHE_DURATION = 180;
 
-// Get Spotify API access token
+/**
+ * Retrieves a Spotify API access token using client credentials flow.
+ * Caches the token for CACHE_DURATION seconds.
+ * @returns {Promise<string>} The Spotify access token.
+ * @throws {Error} If Spotify credentials are not configured or token fetch fails.
+ */
 export async function getSpotifyAccessToken(): Promise<string> {
-  const clientId = process.env.SPOTIFY_CLIENT_ID
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    throw new Error("Spotify API credentials are not configured")
+    console.error("Spotify API credentials missing in environment variables.");
+    throw new Error("Spotify API credentials are not configured");
   }
 
-  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-  const response = await fetch(SPOTIFY_ACCOUNTS_BASE, {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${basic}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-    }),
-    next: { revalidate: CACHE_DURATION },
-  })
+  try {
+    const response = await fetch(SPOTIFY_ACCOUNTS_BASE, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+      }),
+      // Use Next.js fetch caching with revalidation
+      next: { revalidate: CACHE_DURATION },
+    });
 
-  if (!response.ok) {
-    throw new Error(`Failed to get Spotify access token: ${response.statusText}`)
-  }
-
-  const data = await response.json()
-  return data.access_token
-}
-
-// Fetch a user's profile
-export async function getUserProfile(userId: string, accessToken: string): Promise<any> {
-  const response = await fetch(`${SPOTIFY_API_BASE}/users/${userId}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    next: { revalidate: CACHE_DURATION },
-  })
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(`User ${userId} not found`)
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(
+        `Spotify token request failed: ${response.status} ${response.statusText}`,
+        errorBody,
+      );
+      throw new Error(
+        `Failed to get Spotify access token: ${response.statusText}`,
+      );
     }
-    throw new Error(`Failed to fetch user profile: ${response.statusText}`)
-  }
 
-  return response.json()
-}
-
-// Fetch a user's playlists
-export async function getUserPlaylists(userId: string, accessToken: string): Promise<any[]> {
-  const response = await fetch(`${SPOTIFY_API_BASE}/users/${userId}/playlists?limit=50`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    next: { revalidate: CACHE_DURATION },
-  })
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(`User ${userId} not found`)
+    const data = await response.json();
+    if (!data.access_token) {
+      console.error("Spotify token response missing access_token:", data);
+      throw new Error("Invalid response received from Spotify token endpoint");
     }
-    throw new Error(`Failed to fetch user playlists: ${response.statusText}`)
+    return data.access_token;
+  } catch (error) {
+    console.error("Error fetching Spotify access token:", error);
+    // Re-throw the error after logging to allow higher-level handling
+    throw error;
   }
-
-  const data = await response.json()
-  return data.items
 }
 
-// Fetch a playlist's tracks
-export async function getPlaylistTracks(playlistId: string, accessToken: string): Promise<any[]> {
-  const response = await fetch(`${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks?limit=100`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    next: { revalidate: CACHE_DURATION },
-  })
+/**
+ * Fetches a user's public profile information from Spotify.
+ * @param {string} userId - The Spotify user ID.
+ * @param {string} accessToken - A valid Spotify access token.
+ * @returns {Promise<any>} The user profile data.
+ * @throws {Error} If the user is not found or the API request fails.
+ */
+export async function getUserProfile(
+  userId: string,
+  accessToken: string,
+): Promise<any> {
+  const url = `${SPOTIFY_API_BASE}/users/${userId}`;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      next: { revalidate: CACHE_DURATION },
+    });
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch playlist tracks: ${response.statusText}`)
-  }
-
-  const data = await response.json()
-  return data.items
-}
-
-// Fetch a user's top tracks (Note: This requires user authentication with proper scopes)
-// Since we can't get actual user listening history with client credentials,
-// we'll simulate it by using tracks from playlists
-export async function getUserTopTracks(userId: string, accessToken: string): Promise<any[]> {
-  // In a real app, we would use the /me/player/recently-played endpoint
-  // But since that requires user authentication, we'll use a workaround
-
-  // For demo purposes, we'll get tracks from the user's public playlists
-  // and randomize their "played_at" times to simulate recent listening
-  const playlists = await getUserPlaylists(userId, accessToken)
-
-  // Get tracks from the first few playlists
-  const tracksPromises = playlists.slice(0, 3).map((playlist) => getPlaylistTracks(playlist.id, accessToken))
-
-  const playlistTracksArrays = await Promise.all(tracksPromises)
-  const allTracks = playlistTracksArrays.flat()
-
-  // Take a random selection of tracks and assign recent "played_at" times
-  const now = new Date()
-  const recentTracks = allTracks
-    .slice(0, 20)
-    .map((item) => {
-      // Random time in the past week
-      const randomHours = Math.floor(Math.random() * 168) // 7 days * 24 hours
-      const playedAt = new Date(now.getTime() - randomHours * 60 * 60 * 1000)
-
-      return {
-        ...item.track,
-        played_at: playedAt.toISOString(),
+    if (!response.ok) {
+      if (response.status === 404) {
+        // User not found is a specific, potentially recoverable case
+        throw new Error(`User ${userId} not found`);
       }
-    })
-    .sort((a, b) => new Date(b.played_at).getTime() - new Date(a.played_at).getTime())
-
-  return recentTracks
-}
-
-// Simulate fetching a user's liked tracks
-export async function getUserLikedTracks(userId: string, accessToken: string): Promise<any[]> {
-  // In a real app, we would use the /me/tracks endpoint
-  // But since that requires user authentication, we'll use a workaround
-
-  // For demo purposes, we'll get tracks from the user's public playlists
-  // and randomize their "liked_at" times to simulate recently liked tracks
-  const playlists = await getUserPlaylists(userId, accessToken)
-
-  // Get tracks from a few random playlists
-  const randomPlaylists = playlists.sort(() => 0.5 - Math.random()).slice(0, 2)
-  const tracksPromises = randomPlaylists.map((playlist) => getPlaylistTracks(playlist.id, accessToken))
-
-  const playlistTracksArrays = await Promise.all(tracksPromises)
-  const allTracks = playlistTracksArrays.flat()
-
-  // Take a random selection of tracks and assign recent "liked_at" times
-  const now = new Date()
-  const likedTracks = allTracks
-    .slice(0, 15)
-    .map((item) => {
-      // Random time in the past week
-      const randomHours = Math.floor(Math.random() * 168) // 7 days * 24 hours
-      const likedAt = new Date(now.getTime() - randomHours * 60 * 60 * 1000)
-
-      return {
-        ...item.track,
-        liked_at: likedAt.toISOString(),
-      }
-    })
-    .sort((a, b) => new Date(b.liked_at).getTime() - new Date(a.liked_at).getTime())
-
-  return likedTracks
-}
-
-// Simulate fetching a user's followed artists and playlists
-export async function getUserFollowed(userId: string, accessToken: string): Promise<any[]> {
-  // In a real app, we would use the /me/following and /me/playlists endpoints
-  // But since those require user authentication, we'll use a workaround
-
-  // For artists, we'll get artists from the user's playlist tracks
-  const playlists = await getUserPlaylists(userId, accessToken)
-
-  // Get some random playlists to use for "followed playlists"
-  const randomPlaylists = playlists
-    .filter((playlist) => playlist.owner.id.toLowerCase() !== userId.toLowerCase())
-    .sort(() => 0.5 - Math.random())
-    .slice(0, 5)
-    .map((playlist) => ({
-      id: playlist.id,
-      name: playlist.name,
-      type: "playlist",
-      images: playlist.images,
-      external_urls: playlist.external_urls,
-      owner: playlist.owner,
-      followers: playlist.followers,
-      description: playlist.description,
-      followed_at: new Date(Date.now() - Math.floor(Math.random() * 168) * 60 * 60 * 1000).toISOString(),
-    }))
-
-  // Get tracks from a few user playlists to extract artists
-  const userPlaylists = playlists.filter((playlist) => playlist.owner.id.toLowerCase() === userId.toLowerCase())
-  const tracksPromises = userPlaylists.slice(0, 2).map((playlist) => getPlaylistTracks(playlist.id, accessToken))
-
-  const playlistTracksArrays = await Promise.all(tracksPromises)
-  const allTracks = playlistTracksArrays.flat()
-
-  // Extract unique artists
-  const artistsMap = new Map()
-  allTracks.forEach((item) => {
-    item.track.artists.forEach((artist) => {
-      if (!artistsMap.has(artist.id)) {
-        artistsMap.set(artist.id, {
-          ...artist,
-          type: "artist",
-          followed_at: new Date(Date.now() - Math.floor(Math.random() * 168) * 60 * 60 * 1000).toISOString(),
-        })
-      }
-    })
-  })
-
-  // Get artist details for a few random artists
-  const randomArtists = Array.from(artistsMap.values())
-    .sort(() => 0.5 - Math.random())
-    .slice(0, 8)
-
-  // Fetch additional artist details where possible
-  const artistDetailsPromises = randomArtists.map(async (artist) => {
-    try {
-      const response = await fetch(`${SPOTIFY_API_BASE}/artists/${artist.id}`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        next: { revalidate: CACHE_DURATION },
-      })
-
-      if (response.ok) {
-        const artistDetails = await response.json()
-        return {
-          ...artist,
-          images: artistDetails.images,
-          followers: artistDetails.followers,
-          genres: artistDetails.genres,
-        }
-      }
-      return artist
-    } catch (error) {
-      console.error(`Failed to fetch details for artist ${artist.id}:`, error)
-      return artist
+      const errorBody = await response.text();
+      console.error(
+        `Spotify profile request failed: ${response.status} ${response.statusText}`,
+        { userId, url, errorBody },
+      );
+      throw new Error(`Failed to fetch user profile: ${response.statusText}`);
     }
-  })
 
-  const artistsWithDetails = await Promise.all(artistDetailsPromises)
-
-  // Combine artists and playlists and sort by followed_at
-  const followed = [...artistsWithDetails, ...randomPlaylists].sort(
-    (a, b) => new Date(b.followed_at).getTime() - new Date(a.followed_at).getTime(),
-  )
-
-  return followed
+    return response.json();
+  } catch (error) {
+    console.error(`Error fetching Spotify user profile for ${userId}:`, error);
+    throw error;
+  }
 }
 
-// Check if a track was added within the current week
-export function wasAddedThisWeek(addedAt: string): boolean {
-  const now = new Date()
-  const trackDate = new Date(addedAt)
-  const oneWeekAgo = new Date(now)
-  oneWeekAgo.setDate(now.getDate() - 7)
+/**
+ * Fetches a user's public playlists from Spotify.
+ * @param {string} userId - The Spotify user ID.
+ * @param {string} accessToken - A valid Spotify access token.
+ * @returns {Promise<any[]>} An array of playlist objects.
+ * @throws {Error} If the user is not found or the API request fails.
+ */
+export async function getUserPlaylists(
+  userId: string,
+  accessToken: string,
+): Promise<any[]> {
+  // Fetch up to 50 playlists, which is the maximum allowed by the API per request.
+  // Pagination could be added here if more than 50 playlists are needed.
+  const url = `${SPOTIFY_API_BASE}/users/${userId}/playlists?limit=50`;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      next: { revalidate: CACHE_DURATION },
+    });
 
-  return trackDate >= oneWeekAgo
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`User ${userId} not found`);
+      }
+      const errorBody = await response.text();
+      console.error(
+        `Spotify playlists request failed: ${response.status} ${response.statusText}`,
+        { userId, url, errorBody },
+      );
+      throw new Error(`Failed to fetch user playlists: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    // Ensure the response structure is as expected
+    return data?.items ?? [];
+  } catch (error) {
+    console.error(`Error fetching Spotify playlists for ${userId}:`, error);
+    throw error;
+  }
 }
 
-// Get day category for a track
-export function getDayCategory(dateString: string): string {
-  const date = new Date(dateString)
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
+/**
+ * Fetches tracks from a specific Spotify playlist.
+ * @param {string} playlistId - The Spotify playlist ID.
+ * @param {string} accessToken - A valid Spotify access token.
+ * @returns {Promise<any[]>} An array of playlist track objects.
+ * @throws {Error} If the API request fails.
+ */
+export async function getPlaylistTracks(
+  playlistId: string,
+  accessToken: string,
+): Promise<any[]> {
+  // Fetch up to 100 tracks, the maximum per request.
+  // Pagination could be added for playlists with more than 100 tracks.
+  // Request specific fields to potentially reduce payload size if needed.
+  const url = `${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks?limit=100&fields=items(added_at,track(id,name,artists,album(images),external_urls,duration_ms,preview_url))`;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      next: { revalidate: CACHE_DURATION },
+    });
 
-  // Reset hours to compare just the dates
-  const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate())
-  const yesterdayDay = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(
+        `Spotify playlist tracks request failed: ${response.status} ${response.statusText}`,
+        { playlistId, url, errorBody },
+      );
+      throw new Error(
+        `Failed to fetch playlist tracks for ${playlistId}: ${response.statusText}`,
+      );
+    }
 
-  if (dateDay.getTime() === todayDay.getTime()) {
-    return "Today"
-  } else if (dateDay.getTime() === yesterdayDay.getTime()) {
-    return "Yesterday"
+    const data = await response.json();
+    // Ensure the response structure is as expected and filter out potential null tracks
+    return (data?.items ?? []).filter((item: any) => item && item.track);
+  } catch (error) {
+    console.error(
+      `Error fetching Spotify tracks for playlist ${playlistId}:`,
+      error,
+    );
+    throw error;
+  }
+}
+
+/**
+ * Formats a date into "DD MMM YYYY" (e.g., "21 Jan 2024").
+ * Uses en-GB locale for day-month order, but the format is language-neutral.
+ * @param {Date} date - The date object to format.
+ * @returns {string} The formatted date string.
+ */
+function formatAbsoluteDate(date: Date): string {
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * Determines the display category and sortable date for a given date string.
+ * Categories: "Today", "Yesterday", Day name (if within the current week),
+ * or "DD MMM YYYY" (if older).
+ * @param {string} dateString - An ISO 8601 date string.
+ * @returns {{ display: string; sortDate: Date }} An object containing the display string
+ *          and the original date (set to start of day) for sorting.
+ * @throws {Error} If the dateString is invalid.
+ */
+export function getDateDisplayInfo(dateString: string): {
+  display: string;
+  sortDate: Date;
+} {
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) {
+    // Handle invalid date strings gracefully but informatively
+    console.error(`Invalid date string encountered: ${dateString}`);
+    throw new Error(`Invalid date string provided: ${dateString}`);
+  }
+
+  const now = new Date();
+
+  // Normalize dates to the start of the day (midnight) in the local timezone for accurate comparison
+  const dateStartOfDay = new Date(date); // Clone date before modifying
+  dateStartOfDay.setHours(0, 0, 0, 0);
+
+  const todayStartOfDay = new Date(now); // Clone now before modifying
+  todayStartOfDay.setHours(0, 0, 0, 0);
+
+  const yesterdayStartOfDay = new Date(todayStartOfDay); // Clone today
+  yesterdayStartOfDay.setDate(todayStartOfDay.getDate() - 1);
+
+  // Calculate the start of the current week (assuming Monday is the first day)
+  const currentDayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  // Calculate difference to get to the previous Monday (or current Monday if today is Monday)
+  const diffToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek; // If Sunday (0), go back 6 days. If Monday (1), diff is 0. If Tuesday (2), diff is -1.
+  const startOfWeek = new Date(todayStartOfDay); // Clone today
+  startOfWeek.setDate(todayStartOfDay.getDate() + diffToMonday);
+
+  let display: string;
+
+  if (dateStartOfDay.getTime() === todayStartOfDay.getTime()) {
+    display = "Today";
+  } else if (dateStartOfDay.getTime() === yesterdayStartOfDay.getTime()) {
+    display = "Yesterday";
+  } else if (dateStartOfDay >= startOfWeek) {
+    // Within the current week (Monday to Sunday), but not today or yesterday
+    const days = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+    // Use the original date's day index, before setHours(0,0,0,0) was applied
+    display = days[date.getDay()];
   } else {
-    // Return day name for other days this week
-    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-    return days[date.getDay()]
+    // Older than the current week - format as DD MMM YYYY
+    display = formatAbsoluteDate(dateStartOfDay);
   }
+
+  // Return the display string and the normalized date for reliable sorting
+  return { display, sortDate: dateStartOfDay };
 }
