@@ -1,43 +1,43 @@
+// app/user/[userId]/page.tsx
 import { Suspense } from "react"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
-import { fetchUserData } from "@/lib/spotify-actions" // Assuming this fetches data based on userId
-import { UserProfileDisplay } from "@/components/user-profile"
-import { TracksView } from "@/components/tracks-view"
-import { ProfileSkeleton } from "@/components/skeletons/profile-skeleton"
-import { TabsSkeleton } from "@/components/skeletons/tabs-skeleton"
-import { SectionSkeleton } from "@/components/skeletons/section-skeleton"
+import { fetchUserData } from "@/lib/spotify/actions/get-user-actions"
+import {ProfileSkeleton} from "@/components/skeletons/profile-skeleton";
+import {UserProfileDisplay} from "@/components/user-profile";
+import {SectionSkeleton} from "@/components/skeletons/section-skeleton";
+import {RecentTracksDisplay} from "@/components/recent-tracks-display";
 
-interface UserTracksPageProps {
+interface UserPageProps {
   params: { userId: string }
 }
 
-// We define the Page component as async to fetch server-side data
-export default async function UserTracksPage({ params }: UserTracksPageProps) {
-  // Decode the userId safely within the async function scope
-  // Note: Awaiting params is not strictly necessary here as it's passed directly,
-  // but accessing its properties should ideally happen within the async flow.
-  // The error likely stems from static analysis expecting this pattern.
-  const localParams = await params;
-  const userId = decodeURIComponent(localParams.userId)
+// This page is a React Server Component by default
+export default async function UserPage({ params }: UserPageProps) {
+  let userId: string
+  const pparams = await params;
 
   try {
-    // Fetch user data on the server
-    const { profile, recentTracks, recentListens, recentLikes, recentFollows } = await fetchUserData(userId)
+    // Decode the userId from the URL parameter
+    userId = decodeURIComponent(pparams.userId)
+  } catch (error) {
+    console.error("Failed to decode userId parameter:", pparams.userId, error)
+    // If decoding fails, it's likely an invalid URL segment
+    notFound()
+  }
 
-    // If fetchUserData indicates not found (e.g., by returning null profile or throwing specific error),
-    // we should ideally trigger notFound() here. Assuming fetchUserData throws for errors.
-    if (!profile) {
-      notFound();
-    }
+  try {
+    // Fetch user data on the server using the server action
+    const { profile, recentTracks } = await fetchUserData(userId)
 
+    // Render the page with the fetched data
     return (
         <div className="min-h-screen bg-white dark:bg-background">
           <div className="container mx-auto px-4 py-4 max-w-2xl">
+            {/* Navigation back to home */}
             <div className="flex items-center mb-4">
-              {/* Simple back navigation */}
               <Button
                   variant="ghost"
                   size="sm"
@@ -51,43 +51,43 @@ export default async function UserTracksPage({ params }: UserTracksPageProps) {
               </Button>
             </div>
 
-            {/* Display user profile with Suspense boundary */}
+            {/* Display user profile - Suspense isn't strictly needed if data is already fetched,
+              but good practice if UserProfileDisplay did its own fetching or was complex. */}
             <Suspense fallback={<ProfileSkeleton />}>
-              {/* UserProfileDisplay likely fetches its own data or accepts it via props.
-                Passing profile directly makes it a pure presentation component. */}
               <UserProfileDisplay profile={profile} />
             </Suspense>
 
-            {/* Display user tracks/activity tabs with Suspense boundary */}
-            <Suspense
-                fallback={
-                  <>
-                    <TabsSkeleton />
-                    <SectionSkeleton count={5} />
-                  </>
-                }
-            >
-              {/* TracksView displays various track lists fetched on the server */}
-              <TracksView
-                  recentTracks={recentTracks}
-                  recentListens={recentListens}
-                  recentLikes={recentLikes}
-                  recentFollows={recentFollows}
-              />
+            {/* Spacer */}
+            <div className="my-6 h-px bg-lavender-200 dark:bg-lavender-800/40" />
+
+            {/* Display recently added tracks */}
+            <Suspense fallback={<SectionSkeleton count={5} title="Recently Added Tracks" />}>
+              {/* Pass fetched tracks directly to the display component */}
+              <RecentTracksDisplay tracks={recentTracks} />
             </Suspense>
           </div>
         </div>
     )
   } catch (error) {
     // Log the error for server-side observability
-    console.error(`Error fetching data for user ${userId}:`, error)
-    // Trigger a 404 Not Found page if data fetching fails (e.g., user doesn't exist or API error)
-    // Consider more specific error handling if needed (e.g., distinguishing 404 from 500)
+    console.error(`[UserPage] Error rendering page for user ${userId}:`, error)
+
+    // Trigger a 404 Not Found page if fetchUserData indicates user not found
+    // or for other critical fetch errors.
+    if (error instanceof Error && error.message.includes("not found")) {
+      notFound()
+    }
+
+    // Optionally, render a generic error message component instead of notFound()
+    // for non-404 errors if preferred. For now, treat most fetch errors as not found.
+    // Re-throw if it's an unexpected server error that shouldn't be a 404.
+    if (!(error instanceof Error && error.message.includes("Could not retrieve data"))) {
+      // Throwing here leads to Next.js default error page unless error.tsx is defined
+      // For now, let's treat Spotify API errors as "not found" for simplicity.
+      // throw error;
+    }
+
+    // Default to notFound for handled errors from fetchUserData or other issues.
     notFound()
   }
 }
-
-// Note: Added `asChild` to the Back Button for proper Link integration.
-// Refined error handling to call notFound() within the try block if profile is null/undefined,
-// assuming fetchUserData handles non-existent users gracefully.
-// Ensured userId decoding happens within the async function scope.
