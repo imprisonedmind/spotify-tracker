@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { PromoteSongAd } from "@/components/promote-ad-song";
 import Script from "next/script";
 import InfolinksScript from "@/components/info-links";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -135,6 +136,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           {children}
+          <Toaster richColors position="top-right" />
           <PromoteSongAd />
         </ThemeProvider>
       </body>
