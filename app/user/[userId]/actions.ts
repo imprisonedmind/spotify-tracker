@@ -13,6 +13,51 @@ import type { Track, UserProfile } from "./types"; // Assuming types are co-loca
 const MIN_RECENT_TRACKS = 20;
 
 /**
+ * Fetches only the essential user profile data from Spotify.
+ * Optimized for use in `generateMetadata`.
+ *
+ * @param {string} userId - The Spotify user ID.
+ * @returns {Promise<UserProfile | null>} The user's profile or null if not found/error.
+ */
+export async function fetchUserProfileForMeta(
+  userId: string,
+): Promise<UserProfile | null> {
+  if (!userId) {
+    console.warn("fetchUserProfileForMeta called without userId");
+    return null;
+  }
+
+  try {
+    const accessToken = await getSpotifyAccessToken();
+    // Directly use the API function expected to return the core profile data
+    const profileData = await getUserProfile(userId, accessToken);
+
+    // Return a minimal UserProfile structure consistent with the type
+    // Note: stats are not calculated here as they require playlist data
+    return {
+      id: profileData.id,
+      display_name: profileData.display_name,
+      external_urls: profileData.external_urls,
+      images: profileData.images,
+      followers: profileData.followers,
+      // Ensure stats object exists, even if empty/default, matching UserProfile type
+      stats: {
+        totalPlaylists: 0, // Not fetched in this specific function
+        totalTracks: 0, // Not fetched in this specific function
+        followerCount: profileData.followers?.total ?? 0,
+      },
+    };
+  } catch (error) {
+    // Log specific error for metadata context, but don't throw, return null
+    console.error(
+      `Error fetching profile for metadata (user: ${userId}):`,
+      error instanceof Error ? error.message : error,
+    );
+    return null; // Indicate failure to fetch profile for metadata generation
+  }
+}
+
+/**
  * Fetches comprehensive data for a specific Spotify user, including their profile,
  * stats, and their most recently added tracks across their owned playlists.
  *
