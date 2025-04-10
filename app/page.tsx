@@ -2,6 +2,8 @@ import Link from "next/link";
 import { SpotifyUrlForm } from "@/components/spotify-url-form";
 import { Headphones, Heart, Music } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { AdPlaceholder } from "@/components/ad-placeholder";
+import { hideAds } from "@/lib/utils";
 
 export default function Home() {
   return (
@@ -38,6 +40,12 @@ export default function Home() {
 
           <SpotifyUrlForm />
 
+          {/* Ad placeholder */}
+          {!hideAds ? (
+            <div className="mt-8 mb-6">
+              <AdPlaceholder type="banner" />
+            </div>
+          ) : null}
           <div className="mt-6 text-center">
             <p className="text-xs text-muted-foreground mb-3">
               Try these example profiles:
