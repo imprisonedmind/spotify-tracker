@@ -1,27 +1,33 @@
-"use client"
+"use client";
 
-import Image from "next/image"
-import { Users, ListMusic, Music, ExternalLink } from "lucide-react"
-import { ProfileSkeleton } from "@/components/skeletons/profile-skeleton"
-import type { UserProfile } from "@/lib/types"
+import Image from "next/image";
+import { Users, ListMusic, Music, ExternalLink } from "lucide-react";
+import { ProfileSkeleton } from "@/components/skeletons/profile-skeleton";
+import type { UserProfile } from "@/lib/types";
 
 interface UserProfileProps {
-  profile: UserProfile
-  isLoading?: boolean
+  profile: UserProfile;
+  isLoading?: boolean;
 }
 
-export function UserProfileDisplay({ profile, isLoading = false }: UserProfileProps) {
+export function UserProfileDisplay({
+  profile,
+  isLoading = false,
+}: UserProfileProps) {
   if (isLoading) {
-    return <ProfileSkeleton />
+    return <ProfileSkeleton />;
   }
 
   return (
-    <div className="bg-white/90 dark:bg-background/90 backdrop-blur-sm rounded-2xl p-4 mb-6 border border-lavender-200 dark:border-lavender-800/40 shadow-sm">
+    <div className="bg-white/90 dark:bg-background/90 backdrop-blur-sm rounded-3xl p-4 mb-6 border border-lavender-200 dark:border-lavender-800/40 shadow-sm">
       <div className="flex items-center gap-4">
         <div className="relative">
-          <div className="w-16 h-16 rounded-xl overflow-hidden border border-lavender-200 dark:border-lavender-700/40 shadow-sm">
+          <div className="size-16 rounded-xl overflow-hidden border border-lavender-200 dark:border-lavender-700/40 shadow-sm">
             <Image
-              src={profile.images?.[0]?.url || "/placeholder.svg?height=80&width=80"}
+              src={
+                profile.images?.[0]?.url ||
+                "/placeholder.svg?height=80&width=80"
+              }
               alt={profile.display_name || profile.id}
               fill
               className="object-cover rounded-xl"
@@ -30,7 +36,9 @@ export function UserProfileDisplay({ profile, isLoading = false }: UserProfilePr
         </div>
 
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold truncate">{profile.display_name || profile.id}</h1>
+          <h1 className="text-xl font-semibold truncate">
+            {profile.display_name || profile.id}
+          </h1>
 
           <div className="flex flex-wrap gap-3 mt-1">
             <div className="inline-flex items-center gap-1">
@@ -41,11 +49,15 @@ export function UserProfileDisplay({ profile, isLoading = false }: UserProfilePr
             </div>
             <div className="inline-flex items-center gap-1">
               <ListMusic className="h-4 w-4 text-peach-500 dark:text-peach-400" />
-              <span className="text-sm text-muted-foreground">{profile.stats?.totalPlaylists || 0}</span>
+              <span className="text-sm text-muted-foreground">
+                {profile.stats?.totalPlaylists || 0}
+              </span>
             </div>
             <div className="inline-flex items-center gap-1">
               <Music className="h-4 w-4 text-mint-500 dark:text-mint-400" />
-              <span className="text-sm text-muted-foreground">{profile.stats?.totalTracks?.toLocaleString() || 0}</span>
+              <span className="text-sm text-muted-foreground">
+                {profile.stats?.totalTracks?.toLocaleString() || 0}
+              </span>
             </div>
           </div>
         </div>
@@ -61,5 +73,5 @@ export function UserProfileDisplay({ profile, isLoading = false }: UserProfilePr
         </a>
       </div>
     </div>
-  )
+  );
 }

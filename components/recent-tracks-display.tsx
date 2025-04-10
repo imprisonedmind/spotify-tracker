@@ -2,9 +2,9 @@
 "use client";
 
 import { Music } from "lucide-react";
-import { TrackCard } from "@/components/track-card";
+import { TrackCard } from "@/components/track-card"; // Import the specific card
 import type { Track } from "@/app/user/[userId]/types";
-import { BaseGroupedDisplay } from "@/components/base-grouped-display"; // Use alias if configured, or relative path
+import { BaseGroupedDisplay } from "@/components/base-grouped-display"; // Adjust path as needed
 
 interface RecentTracksDisplayProps {
   tracks: Track[];
@@ -21,31 +21,26 @@ export function RecentTracksDisplay({
         <Music className="h-6 w-6 text-lavender-400" />
       </div>
       <p className="text-muted-foreground">No recent tracks found.</p>
-      {/* Optional: Add more context if needed */}
-      {/* <p className="mt-2 text-sm text-muted-foreground">This user hasn't added tracks recently.</p> */}
     </div>
   );
 
-  // Define a function to get a unique key for each track item
+  // Define a stable key generation function
   const getTrackKey = (track: Track): string => {
-    // Use track ID and added_at timestamp for a robust key,
-    // handling potential duplicate tracks added at different times (though unlikely here)
-    return `${track.id}-${track.added_at}`;
+    // Combine track ID and added_at for uniqueness, fallback if needed
+    return `${track.id || "no-id"}-${track.added_at || "no-date"}`;
   };
 
   return (
     <BaseGroupedDisplay
       items={tracks}
-      // Provide the function to extract the date string for grouping
       getDateString={(track) => track.added_at}
-      // Updated renderItem: only receives the track item
-      // The logic for 'showTimeAgo' is now implicitly handled by the group header ("Today")
-      // or needs to be implemented within TrackCard if relative time is desired for older items.
-      // Assuming TrackCard can handle displaying the track without the explicit flag for now.
-      renderItem={(track) => <TrackCard track={track} />}
+      // Updated renderItem: receives 'isToday' boolean
+      renderItem={(track, isToday) => (
+        // Pass the 'isToday' flag to TrackCard as 'showTimeAgo'
+        <TrackCard track={track} showTimeAgo={isToday} />
+      )}
       emptyState={emptyState}
       isLoading={isLoading}
-      // Provide the required getItemKey prop
       getItemKey={getTrackKey}
     />
   );
