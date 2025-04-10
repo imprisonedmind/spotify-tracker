@@ -202,32 +202,40 @@ export async function getUserPlaylists(
 }
 
 /**
- * Fetches tracks from a specific Spotify playlist.
- * Optimization: Accepts a 'limit' parameter and requests minimal fields.
+ * Fetches tracks from a specific Spotify playlist, aiming for the most recent ones.
+ * Optimization: Accepts 'limit' and 'totalTracks' to calculate offset for fetching the end of the playlist.
+ *
  * @param {string} playlistId - The Spotify playlist ID.
  * @param {string} accessToken - A valid Spotify access token.
+ * @param {number} totalTracks - The total number of tracks in the playlist (used to calculate offset).
  * @param {number} [limit=50] - Max tracks to fetch (1-100).
- * @returns {Promise<any[]>} An array of playlist track objects.
+ * @returns {Promise<any[]>} An array of the most recently added playlist track objects.
  * @throws {Error} If the API request fails.
  * @throws {SpotifyRateLimitError} If the API returns 429.
  */
 export async function getPlaylistTracks(
   playlistId: string,
   accessToken: string,
-  limit: number = 50,
+  totalTracks: number, // Add totalTracks parameter
+  limit: number = 10,
 ): Promise<any[]> {
-  // Consider defining a stricter return type: SpotifyApi.PlaylistTrackObject[]
   const actualLimit = Math.max(1, Math.min(100, limit));
+  // Calculate offset to get the last 'limit' tracks
+  // Ensure offset is not negative if totalTracks < limit
+  const offset = Math.max(0, totalTracks - actualLimit);
+
   const fields =
     "items(added_at,track(id,name,artists(id,name),album(images),external_urls,duration_ms,preview_url))";
-  const url = `${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks?limit=${actualLimit}&fields=${encodeURIComponent(fields)}`;
+  // Add the calculated offset to the URL
+  const url = `${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks?limit=${actualLimit}&offset=${offset}&fields=${encodeURIComponent(fields)}`;
+
+  console.log(`Fetching tracks for playlist ${playlistId}: URL=${url}`); // Add log for debugging URL
 
   try {
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-      // Cache tracks for a shorter duration as they change more often
       next: { revalidate: TRACKS_CACHE_DURATION },
     });
 
@@ -236,12 +244,24 @@ export async function getPlaylistTracks(
     if (!response.ok) {
       console.error(
         `Spotify playlist tracks request failed: ${response.status} ${response.statusText}`,
-        { playlistId, limit: actualLimit, url, responseBodyText },
+        {
+          playlistId,
+          limit: actualLimit,
+          offset,
+          totalTracks,
+          url,
+          responseBodyText,
+        }, // Log relevant parameters
       );
       if (response.status === 404) {
-        // Playlist itself might be deleted or private
         throw new Error(
           `Playlist ${playlistId} not found or inaccessible. Status: 404.`,
+        );
+      }
+      // Handle potential 400 Bad Request if offset is invalid (though Math.max should prevent negative)
+      if (response.status === 400) {
+        throw new Error(
+          `Bad request fetching tracks for playlist ${playlistId} (potentially invalid offset: ${offset} for total: ${totalTracks}). Status: 400. Body: ${responseBodyText}`,
         );
       }
       if (response.status === 429) {
@@ -256,11 +276,9 @@ export async function getPlaylistTracks(
     }
 
     const data = JSON.parse(responseBodyText);
-    // Filter out potential null tracks just in case API response is unexpected
     return (data?.items ?? []).filter((item: any) => item?.track);
   } catch (error) {
     if (error instanceof SpotifyRateLimitError) {
-      // Log specific playlist failure due to rate limit but re-throw
       console.warn(`Rate limit hit for playlist ${playlistId}.`);
       throw error;
     }
@@ -268,7 +286,6 @@ export async function getPlaylistTracks(
       `Error fetching Spotify tracks for playlist ${playlistId}:`,
       error,
     );
-    // Wrap or re-throw other errors
     throw new Error(
       `Failed to fetch tracks for playlist ${playlistId}: ${error instanceof Error ? error.message : String(error)}`,
     );
