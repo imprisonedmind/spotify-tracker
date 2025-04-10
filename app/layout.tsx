@@ -5,6 +5,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PromoteSongAd } from "@/components/promote-ad-song";
 import Script from "next/script";
+import InfolinksScript from "@/components/info-links";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -137,6 +138,7 @@ export default function RootLayout({
           <PromoteSongAd />
         </ThemeProvider>
       </body>
+      <InfolinksScript />
       <Script src="https://scripts.simpleanalyticscdn.com/latest.js" />
     </html>
   );
