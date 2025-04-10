@@ -24,7 +24,7 @@ export function UserProfileDisplay({ profile, isLoading = false }: UserProfilePr
               src={profile.images?.[0]?.url || "/placeholder.svg?height=80&width=80"}
               alt={profile.display_name || profile.id}
               fill
-              className="object-cover"
+              className="object-cover rounded-xl"
             />
           </div>
         </div>

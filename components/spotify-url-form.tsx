@@ -32,7 +32,7 @@ export function SpotifyUrlForm() {
         }
       }
 
-      router.push(`/tracks/${encodeURIComponent(userId)}`)
+      router.push(`/user/${encodeURIComponent(userId)}`)
     } catch (error) {
       console.error("Error processing URL:", error)
     } finally {
