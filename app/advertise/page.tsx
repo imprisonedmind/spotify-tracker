@@ -80,7 +80,7 @@ export default function AdvertisePage() {
               </div>
               <CardTitle className="text-base">Premium Placement</CardTitle>
               <CardDescription>
-                Featured across the Friend Beats platform
+                Featured across the Friends Beat platform
               </CardDescription>
             </CardHeader>
           </Card>

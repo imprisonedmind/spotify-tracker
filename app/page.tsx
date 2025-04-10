@@ -21,7 +21,7 @@ export default function Home() {
               </div>
             </div>
             <h1 className="text-3xl font-bold mb-3 bg-clip-text text-transparent bg-gradient-to-r from-lavender-600 to-peach-500 dark:from-lavender-400 dark:to-peach-300">
-              Friend Beats
+              Friends Beat
             </h1>
             <p className="text-muted-foreground text-sm max-w-sm mx-auto mb-2">
               See what your friends are adding to their playlists and discover

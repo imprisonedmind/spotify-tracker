@@ -18,12 +18,12 @@ export const metadata: Metadata = {
 
   // Core metadata
   title: {
-    default: "Friend Beats | Discover What Your Friends Are Listening To",
-    template: "%s | Friend Beats", // Useful for child pages setting their own title
+    default: "Friends Beat | Discover What Your Friends Are Listening To",
+    template: "%s | Friends Beat", // Useful for child pages setting their own title
   },
   description:
     "See what music your friends are adding to their Spotify playlists. Connect your Spotify account and explore the latest tracks your social circle is enjoying.",
-  applicationName: "Friend Beats",
+  applicationName: "Friends Beat",
   keywords: [
     "music discovery",
     "spotify",
@@ -34,11 +34,11 @@ export const metadata: Metadata = {
     "track discovery",
     "new music",
   ],
-  authors: [{ name: "Friend Beats Team", url: siteUrl }], // Update with actual author/team info
+  authors: [{ name: "Friends Beat Team", url: siteUrl }], // Update with actual author/team info
   generator: "Next.js", // Keep or update as needed, 'v0.dev' might be less standard
   referrer: "origin-when-cross-origin",
-  creator: "Friend Beats Team", // Or your company name
-  publisher: "Friend Beats", // Or your company name
+  creator: "Friends Beat Team", // Or your company name
+  publisher: "Friends Beat", // Or your company name
 
   // Robots directives for search engines
   robots: {
@@ -63,23 +63,23 @@ export const metadata: Metadata = {
 
   // Open Graph (og:) metadata for social sharing (Facebook, LinkedIn, etc.)
   openGraph: {
-    title: "Friend Beats | Discover What Your Friends Are Listening To",
+    title: "Friends Beat | Discover What Your Friends Are Listening To",
     description:
       "See what music your friends are adding to their Spotify playlists.",
     url: siteUrl, // Canonical URL of the page
-    siteName: "Friend Beats",
+    siteName: "Friends Beat",
     images: [
       {
         url: "/seo-large.jpg", // Relative path, resolved by metadataBase
         width: 1200, // Corrected standard width for large OG images
         height: 630,
-        alt: "Friend Beats - Discover friends' music on Spotify.",
+        alt: "Friends Beat - Discover friends' music on Spotify.",
       },
       {
         url: "/seo-small.jpg", // Small variant if needed, though often one is enough
         width: 600,
         height: 315,
-        alt: "Friend Beats - Discover friends' music on Spotify.",
+        alt: "Friends Beat - Discover friends' music on Spotify.",
       },
     ],
     locale: "en_US",
@@ -89,7 +89,7 @@ export const metadata: Metadata = {
   // Twitter Card metadata
   twitter: {
     card: "summary_large_image", // Use 'summary_large_image' for richer preview
-    title: "Friend Beats | Discover What Your Friends Are Listening To",
+    title: "Friends Beat | Discover What Your Friends Are Listening To",
     description:
       "See what music your friends are adding to their Spotify playlists.",
     siteId: "lukestephens.co.za", // Optional: Your website's Twitter ID
@@ -98,7 +98,7 @@ export const metadata: Metadata = {
     images: [
       {
         url: "/seo-large.jpg", // Use the large image for Twitter Card
-        alt: "Friend Beats - Discover friends' music on Spotify.",
+        alt: "Friends Beat - Discover friends' music on Spotify.",
       },
     ],
   },
