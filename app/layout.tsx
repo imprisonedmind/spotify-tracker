@@ -112,13 +112,6 @@ export const metadata: Metadata = {
   //   },
   // },
 
-  // Viewport settings (Next.js usually handles this well, but explicit definition can be robust)
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1, // Optional: Prevents zooming, consider accessibility implications
-  },
-
   // Optional: Category for the website content
   category: "technology music social",
 };

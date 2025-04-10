@@ -7,7 +7,7 @@ const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
 const SPOTIFY_ACCOUNTS_BASE = "https://accounts.spotify.com/api/token";
 
 // Cache duration in seconds (3 minutes)
-export const CACHE_DURATION = 180;
+export const CACHE_DURATION = 1200;
 
 /**
  * Retrieves a Spotify API access token using client credentials flow.
