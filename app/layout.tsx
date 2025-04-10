@@ -91,8 +91,8 @@ export const metadata: Metadata = {
     title: "Friend Beats | Discover What Your Friends Are Listening To",
     description:
       "See what music your friends are adding to their Spotify playlists.",
-    // siteId: 'YourTwitterSiteID', // Optional: Your website's Twitter ID
-    // creator: '@YourTwitterHandle', // Optional: Your personal/company Twitter handle
+    siteId: "lukestephens.co.za", // Optional: Your website's Twitter ID
+    creator: "@lukey_stephens", // Optional: Your personal/company Twitter handle
     // creatorId: 'YourTwitterCreatorID', // Optional: Your personal/company Twitter ID
     images: [
       {
