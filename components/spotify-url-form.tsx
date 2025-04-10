@@ -51,10 +51,10 @@ export function SpotifyUrlForm() {
               </div>
               <Input
                 type="text"
-                placeholder="Search for a friend (Link or Username)"
+                placeholder="Find a friend (Spotify link or username)"
                 value={spotifyUrl}
                 onChange={(e) => setSpotifyUrl(e.target.value)}
-                className="pl-10 pr-4 h-11 border-lavender-200 dark:border-lavender-700/40 rounded-lg bg-lavender-700/5 placeholder:text-lavender-800/60 "
+                className="pl-10 pr-4 h-11 border-lavender-200 dark:border-lavender-700/40 rounded-lg bg-lavender-700/5 placeholder:text-lavender-800/60 focus:!outline-lavender-700 "
               />
             </div>
             <Button
