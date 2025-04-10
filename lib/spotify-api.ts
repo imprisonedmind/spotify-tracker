@@ -1,20 +1,14 @@
 // FILE: lib/spotify-api.ts
 
-import { Buffer } from "buffer"; // Ensure Buffer is available
+import { Buffer } from "buffer";
 
-// Base URLs for Spotify API
 const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
 const SPOTIFY_ACCOUNTS_BASE = "https://accounts.spotify.com/api/token";
 
-// Cache duration in seconds (3 minutes)
+// Cache duration in seconds (20 minutes)
 export const CACHE_DURATION = 1200;
 
-/**
- * Retrieves a Spotify API access token using client credentials flow.
- * Caches the token for CACHE_DURATION seconds.
- * @returns {Promise<string>} The Spotify access token.
- * @throws {Error} If Spotify credentials are not configured or token fetch fails.
- */
+// --- getSpotifyAccessToken remains the same ---
 export async function getSpotifyAccessToken(): Promise<string> {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
@@ -36,8 +30,7 @@ export async function getSpotifyAccessToken(): Promise<string> {
       body: new URLSearchParams({
         grant_type: "client_credentials",
       }),
-      // Use Next.js fetch caching with revalidation
-      next: { revalidate: CACHE_DURATION },
+      next: { revalidate: CACHE_DURATION }, // Use Next.js built-in fetch caching
     });
 
     if (!response.ok) {
@@ -59,22 +52,16 @@ export async function getSpotifyAccessToken(): Promise<string> {
     return data.access_token;
   } catch (error) {
     console.error("Error fetching Spotify access token:", error);
-    // Re-throw the error after logging to allow higher-level handling
     throw error;
   }
 }
 
-/**
- * Fetches a user's public profile information from Spotify.
- * @param {string} userId - The Spotify user ID.
- * @param {string} accessToken - A valid Spotify access token.
- * @returns {Promise<any>} The user profile data.
- * @throws {Error} If the user is not found or the API request fails.
- */
+// --- getUserProfile remains the same ---
 export async function getUserProfile(
   userId: string,
   accessToken: string,
 ): Promise<any> {
+  // Consider defining a stricter type based on expected response
   const url = `${SPOTIFY_API_BASE}/users/${userId}`;
   try {
     const response = await fetch(url, {
@@ -86,7 +73,6 @@ export async function getUserProfile(
 
     if (!response.ok) {
       if (response.status === 404) {
-        // User not found is a specific, potentially recoverable case
         throw new Error(`User ${userId} not found`);
       }
       const errorBody = await response.text();
@@ -106,18 +92,22 @@ export async function getUserProfile(
 
 /**
  * Fetches a user's public playlists from Spotify.
+ * Optimization: Uses 'fields' to request only necessary data.
  * @param {string} userId - The Spotify user ID.
  * @param {string} accessToken - A valid Spotify access token.
- * @returns {Promise<any[]>} An array of playlist objects.
+ * @returns {Promise<any[]>} An array of playlist objects with minimal fields.
  * @throws {Error} If the user is not found or the API request fails.
  */
 export async function getUserPlaylists(
   userId: string,
   accessToken: string,
 ): Promise<any[]> {
-  // Fetch up to 50 playlists, which is the maximum allowed by the API per request.
-  // Pagination could be added here if more than 50 playlists are needed.
-  const url = `${SPOTIFY_API_BASE}/users/${userId}/playlists?limit=50`;
+  // Consider defining a stricter PlaylistSummary type
+  // Fetch up to 50 playlists, the maximum per request.
+  // **Optimization**: Request only fields needed for filtering and stats.
+  const fields = "items(id,name,owner(id),tracks(total),external_urls)";
+  const url = `${SPOTIFY_API_BASE}/users/${userId}/playlists?limit=50&fields=${encodeURIComponent(fields)}`;
+
   try {
     const response = await fetch(url, {
       headers: {
@@ -139,7 +129,6 @@ export async function getUserPlaylists(
     }
 
     const data = await response.json();
-    // Ensure the response structure is as expected
     return data?.items ?? [];
   } catch (error) {
     console.error(`Error fetching Spotify playlists for ${userId}:`, error);
@@ -149,32 +138,43 @@ export async function getUserPlaylists(
 
 /**
  * Fetches tracks from a specific Spotify playlist.
+ * Optimization: Accepts a 'limit' parameter.
  * @param {string} playlistId - The Spotify playlist ID.
  * @param {string} accessToken - A valid Spotify access token.
+ * @param {number} [limit=50] - The maximum number of tracks to fetch (default: 50, max: 100).
  * @returns {Promise<any[]>} An array of playlist track objects.
  * @throws {Error} If the API request fails.
  */
 export async function getPlaylistTracks(
   playlistId: string,
   accessToken: string,
+  limit: number = 50, // Default to fetching 50, can be overridden
 ): Promise<any[]> {
-  // Fetch up to 100 tracks, the maximum per request.
-  // Pagination could be added for playlists with more than 100 tracks.
-  // Request specific fields to potentially reduce payload size if needed.
-  const url = `${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks?limit=100&fields=items(added_at,track(id,name,artists,album(images),external_urls,duration_ms,preview_url))`;
+  // Consider defining a stricter PlaylistTrackItem type
+  // Ensure limit is within Spotify's allowed range (1-100)
+  const actualLimit = Math.max(1, Math.min(100, limit));
+
+  // Request specific fields to reduce payload size.
+  const fields =
+    "items(added_at,track(id,name,artists(id,name),album(images),external_urls,duration_ms,preview_url))";
+  // **Optimization**: Use the 'actualLimit' parameter in the URL.
+  const url = `${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks?limit=${actualLimit}&fields=${encodeURIComponent(fields)}`;
+
   try {
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
+      // Cache individual playlist track calls as well
       next: { revalidate: CACHE_DURATION },
     });
 
     if (!response.ok) {
+      // Handle 404 for playlists specifically if needed, though less common than user 404
       const errorBody = await response.text();
       console.error(
         `Spotify playlist tracks request failed: ${response.status} ${response.statusText}`,
-        { playlistId, url, errorBody },
+        { playlistId, limit: actualLimit, url, errorBody },
       );
       throw new Error(
         `Failed to fetch playlist tracks for ${playlistId}: ${response.statusText}`,
@@ -182,7 +182,7 @@ export async function getPlaylistTracks(
     }
 
     const data = await response.json();
-    // Ensure the response structure is as expected and filter out potential null tracks
+    // Filter out potential null tracks just in case
     return (data?.items ?? []).filter((item: any) => item && item.track);
   } catch (error) {
     console.error(
@@ -193,12 +193,7 @@ export async function getPlaylistTracks(
   }
 }
 
-/**
- * Formats a date into "DD MMM YYYY" (e.g., "21 Jan 2024").
- * Uses en-GB locale for day-month order, but the format is language-neutral.
- * @param {Date} date - The date object to format.
- * @returns {string} The formatted date string.
- */
+// --- getDateDisplayInfo and formatAbsoluteDate remain the same ---
 function formatAbsoluteDate(date: Date): string {
   return date.toLocaleDateString("en-GB", {
     day: "numeric",
@@ -207,43 +202,29 @@ function formatAbsoluteDate(date: Date): string {
   });
 }
 
-/**
- * Determines the display category and sortable date for a given date string.
- * Categories: "Today", "Yesterday", Day name (if within the current week),
- * or "DD MMM YYYY" (if older).
- * @param {string} dateString - An ISO 8601 date string.
- * @returns {{ display: string; sortDate: Date }} An object containing the display string
- *          and the original date (set to start of day) for sorting.
- * @throws {Error} If the dateString is invalid.
- */
 export function getDateDisplayInfo(dateString: string): {
   display: string;
   sortDate: Date;
 } {
   const date = new Date(dateString);
   if (isNaN(date.getTime())) {
-    // Handle invalid date strings gracefully but informatively
     console.error(`Invalid date string encountered: ${dateString}`);
+    // Return a default/error state instead of throwing? Depends on desired UX.
+    // For now, keep throwing to align with previous behavior.
     throw new Error(`Invalid date string provided: ${dateString}`);
   }
 
   const now = new Date();
-
-  // Normalize dates to the start of the day (midnight) in the local timezone for accurate comparison
-  const dateStartOfDay = new Date(date); // Clone date before modifying
+  const dateStartOfDay = new Date(date);
   dateStartOfDay.setHours(0, 0, 0, 0);
-
-  const todayStartOfDay = new Date(now); // Clone now before modifying
+  const todayStartOfDay = new Date(now);
   todayStartOfDay.setHours(0, 0, 0, 0);
-
-  const yesterdayStartOfDay = new Date(todayStartOfDay); // Clone today
+  const yesterdayStartOfDay = new Date(todayStartOfDay);
   yesterdayStartOfDay.setDate(todayStartOfDay.getDate() - 1);
 
-  // Calculate the start of the current week (assuming Monday is the first day)
   const currentDayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  // Calculate difference to get to the previous Monday (or current Monday if today is Monday)
-  const diffToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek; // If Sunday (0), go back 6 days. If Monday (1), diff is 0. If Tuesday (2), diff is -1.
-  const startOfWeek = new Date(todayStartOfDay); // Clone today
+  const diffToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+  const startOfWeek = new Date(todayStartOfDay);
   startOfWeek.setDate(todayStartOfDay.getDate() + diffToMonday);
 
   let display: string;
@@ -253,7 +234,6 @@ export function getDateDisplayInfo(dateString: string): {
   } else if (dateStartOfDay.getTime() === yesterdayStartOfDay.getTime()) {
     display = "Yesterday";
   } else if (dateStartOfDay >= startOfWeek) {
-    // Within the current week (Monday to Sunday), but not today or yesterday
     const days = [
       "Sunday",
       "Monday",
@@ -263,13 +243,10 @@ export function getDateDisplayInfo(dateString: string): {
       "Friday",
       "Saturday",
     ];
-    // Use the original date's day index, before setHours(0,0,0,0) was applied
     display = days[date.getDay()];
   } else {
-    // Older than the current week - format as DD MMM YYYY
     display = formatAbsoluteDate(dateStartOfDay);
   }
 
-  // Return the display string and the normalized date for reliable sorting
   return { display, sortDate: dateStartOfDay };
 }
