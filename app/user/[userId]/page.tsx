@@ -23,7 +23,9 @@ export async function generateMetadata(
   { params }: UserTracksPageProps,
   parent: ResolvingMetadata,
 ): Promise<Metadata> {
-  const userId = decodeURIComponent(params.userId);
+  const localParams = await params;
+
+  const userId = decodeURIComponent(localParams.userId);
 
   try {
     const profile = await fetchUserProfileForMeta(userId);
