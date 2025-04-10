@@ -1,5 +1,7 @@
 // FILE: lib/spotify-api.ts
 
+import { Buffer } from "buffer"; // Ensure Buffer is available
+
 // Base URLs for Spotify API
 const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
 const SPOTIFY_ACCOUNTS_BASE = "https://accounts.spotify.com/api/token";
@@ -192,28 +194,66 @@ export async function getPlaylistTracks(
 }
 
 /**
- * Determines the relative day category for a given date string.
- * @param {string} dateString - An ISO 8601 date string.
- * @returns {string} "Today", "Yesterday", or the day name (e.g., "Monday").
+ * Formats a date into "DD MMM YYYY" (e.g., "21 Jan 2024").
+ * Uses en-GB locale for day-month order, but the format is language-neutral.
+ * @param {Date} date - The date object to format.
+ * @returns {string} The formatted date string.
  */
-export function getDayCategory(dateString: string): string {
+function formatAbsoluteDate(date: Date): string {
+  return date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+/**
+ * Determines the display category and sortable date for a given date string.
+ * Categories: "Today", "Yesterday", Day name (if within the current week),
+ * or "DD MMM YYYY" (if older).
+ * @param {string} dateString - An ISO 8601 date string.
+ * @returns {{ display: string; sortDate: Date }} An object containing the display string
+ *          and the original date (set to start of day) for sorting.
+ * @throws {Error} If the dateString is invalid.
+ */
+export function getDateDisplayInfo(dateString: string): {
+  display: string;
+  sortDate: Date;
+} {
   const date = new Date(dateString);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
+  if (isNaN(date.getTime())) {
+    // Handle invalid date strings gracefully but informatively
+    console.error(`Invalid date string encountered: ${dateString}`);
+    throw new Error(`Invalid date string provided: ${dateString}`);
+  }
 
-  // Compare year, month, and day for accuracy
-  const isSameDay = (d1: Date, d2: Date): boolean =>
-    d1.getFullYear() === d2.getFullYear() &&
-    d1.getMonth() === d2.getMonth() &&
-    d1.getDate() === d2.getDate();
+  const now = new Date();
 
-  if (isSameDay(date, today)) {
-    return "Today";
-  } else if (isSameDay(date, yesterday)) {
-    return "Yesterday";
-  } else {
-    // Return day name for other days
+  // Normalize dates to the start of the day (midnight) in the local timezone for accurate comparison
+  const dateStartOfDay = new Date(date); // Clone date before modifying
+  dateStartOfDay.setHours(0, 0, 0, 0);
+
+  const todayStartOfDay = new Date(now); // Clone now before modifying
+  todayStartOfDay.setHours(0, 0, 0, 0);
+
+  const yesterdayStartOfDay = new Date(todayStartOfDay); // Clone today
+  yesterdayStartOfDay.setDate(todayStartOfDay.getDate() - 1);
+
+  // Calculate the start of the current week (assuming Monday is the first day)
+  const currentDayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  // Calculate difference to get to the previous Monday (or current Monday if today is Monday)
+  const diffToMonday = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek; // If Sunday (0), go back 6 days. If Monday (1), diff is 0. If Tuesday (2), diff is -1.
+  const startOfWeek = new Date(todayStartOfDay); // Clone today
+  startOfWeek.setDate(todayStartOfDay.getDate() + diffToMonday);
+
+  let display: string;
+
+  if (dateStartOfDay.getTime() === todayStartOfDay.getTime()) {
+    display = "Today";
+  } else if (dateStartOfDay.getTime() === yesterdayStartOfDay.getTime()) {
+    display = "Yesterday";
+  } else if (dateStartOfDay >= startOfWeek) {
+    // Within the current week (Monday to Sunday), but not today or yesterday
     const days = [
       "Sunday",
       "Monday",
@@ -223,6 +263,13 @@ export function getDayCategory(dateString: string): string {
       "Friday",
       "Saturday",
     ];
-    return days[date.getDay()];
+    // Use the original date's day index, before setHours(0,0,0,0) was applied
+    display = days[date.getDay()];
+  } else {
+    // Older than the current week - format as DD MMM YYYY
+    display = formatAbsoluteDate(dateStartOfDay);
   }
+
+  // Return the display string and the normalized date for reliable sorting
+  return { display, sortDate: dateStartOfDay };
 }
