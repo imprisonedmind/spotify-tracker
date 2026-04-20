@@ -5,6 +5,7 @@ import { SpotifyRateLimitError } from "./errors";
 
 const SPOTIFY_API_BASE = "https://api.spotify.com/v1";
 const SPOTIFY_ACCOUNTS_BASE = "https://accounts.spotify.com/api/token";
+const SPOTIFY_PAGE_LIMIT = 50;
 
 // Cache duration in seconds (e.g., 1 hour for profile/playlists, 20 min for tracks?)
 // Using a single constant for now, can be refined.
@@ -151,85 +152,86 @@ export async function getUserPlaylists(
   accessToken: string,
 ): Promise<any[]> {
   // Consider defining a stricter return type: Partial<SpotifyApi.PlaylistObjectSimplified>[]
-  // Fetch up to 50 playlists, the maximum per request.
-  const fields = "items(id,name,owner(id),tracks(total),external_urls)";
-  const url = `${SPOTIFY_API_BASE}/users/${userId}/playlists?limit=50&fields=${encodeURIComponent(fields)}`;
+  const fields = "next,items(id,name,owner(id),tracks(total),external_urls)";
+  const playlists: any[] = [];
+  let offset = 0;
+  let hasNextPage = true;
 
-  try {
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      next: { revalidate: CACHE_DURATION }, // Cache playlist list longer
-    });
+  while (hasNextPage) {
+    const url = `${SPOTIFY_API_BASE}/users/${userId}/playlists?limit=${SPOTIFY_PAGE_LIMIT}&offset=${offset}&fields=${encodeURIComponent(fields)}`;
 
-    const responseBodyText = await response.text();
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        next: { revalidate: CACHE_DURATION }, // Cache playlist list longer
+      });
 
-    if (!response.ok) {
-      console.error(
-        `Spotify playlists request failed: ${response.status} ${response.statusText}`,
-        { userId, url, responseBodyText },
-      );
-      if (response.status === 404) {
-        // User not found might manifest here too if profile check passed somehow but playlists fail
+      const responseBodyText = await response.text();
+
+      if (!response.ok) {
+        console.error(
+          `Spotify playlists request failed: ${response.status} ${response.statusText}`,
+          { userId, url, responseBodyText },
+        );
+        if (response.status === 404) {
+          // User not found might manifest here too if profile check passed somehow but playlists fail
+          throw new Error(
+            `User ${userId} not found when fetching playlists. Status: 404.`,
+          );
+        }
+        if (response.status === 429) {
+          throw new SpotifyRateLimitError(
+            `Spotify API rate limit exceeded fetching playlists for ${userId}. Status: 429. Body: ${responseBodyText}`,
+            response.headers.get("Retry-After"),
+          );
+        }
         throw new Error(
-          `User ${userId} not found when fetching playlists. Status: 404.`,
+          `Failed to fetch user playlists for ${userId}: ${response.statusText}. Body: ${responseBodyText}`,
         );
       }
-      if (response.status === 429) {
-        throw new SpotifyRateLimitError(
-          `Spotify API rate limit exceeded fetching playlists for ${userId}. Status: 429. Body: ${responseBodyText}`,
-          response.headers.get("Retry-After"),
-        );
+
+      const data = JSON.parse(responseBodyText);
+      playlists.push(...(data?.items ?? []));
+      hasNextPage = Boolean(data?.next);
+      offset += SPOTIFY_PAGE_LIMIT;
+    } catch (error) {
+      if (error instanceof SpotifyRateLimitError) {
+        throw error; // Re-throw specific error
       }
+      console.error(`Error fetching Spotify playlists for ${userId}:`, error);
+      // Wrap or re-throw other errors
       throw new Error(
-        `Failed to fetch user playlists for ${userId}: ${response.statusText}. Body: ${responseBodyText}`,
+        `Failed to fetch playlists for ${userId}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-
-    const data = JSON.parse(responseBodyText);
-    return data?.items ?? [];
-  } catch (error) {
-    if (error instanceof SpotifyRateLimitError) {
-      throw error; // Re-throw specific error
-    }
-    console.error(`Error fetching Spotify playlists for ${userId}:`, error);
-    // Wrap or re-throw other errors
-    throw new Error(
-      `Failed to fetch playlists for ${userId}: ${error instanceof Error ? error.message : String(error)}`,
-    );
   }
+
+  return playlists;
 }
 
 /**
- * Fetches tracks from a specific Spotify playlist, aiming for the most recent ones.
- * Optimization: Accepts 'limit' and 'totalTracks' to calculate offset for fetching the end of the playlist.
+ * Fetches one page of tracks from a specific Spotify playlist.
  *
  * @param {string} playlistId - The Spotify playlist ID.
  * @param {string} accessToken - A valid Spotify access token.
- * @param {number} totalTracks - The total number of tracks in the playlist (used to calculate offset).
- * @param {number} [limit=50] - Max tracks to fetch (1-100).
- * @returns {Promise<any[]>} An array of the most recently added playlist track objects.
+ * @param {number} [offset=0] - The playlist item offset to fetch.
+ * @param {number} [limit=50] - Max tracks to fetch.
+ * @returns {Promise<{ items: any[]; next: string | null }>} A page of playlist track objects.
  * @throws {Error} If the API request fails.
  * @throws {SpotifyRateLimitError} If the API returns 429.
  */
-export async function getPlaylistTracks(
+async function getPlaylistTracksPage(
   playlistId: string,
   accessToken: string,
-  totalTracks: number, // Add totalTracks parameter
-  limit: number = 10,
-): Promise<any[]> {
-  const actualLimit = Math.max(1, Math.min(100, limit));
-  // Calculate offset to get the last 'limit' tracks
-  // Ensure offset is not negative if totalTracks < limit
-  const offset = Math.max(0, totalTracks - actualLimit);
-
+  offset: number = 0,
+  limit: number = SPOTIFY_PAGE_LIMIT,
+): Promise<{ items: any[]; next: string | null }> {
+  const actualLimit = Math.max(1, Math.min(SPOTIFY_PAGE_LIMIT, limit));
   const fields =
-    "items(added_at,track(id,name,artists(id,name),album(images),external_urls,duration_ms,preview_url))";
-  // Add the calculated offset to the URL
+    "next,items(added_at,track(id,type,name,artists(id,name),album(images),external_urls,duration_ms,preview_url))";
   const url = `${SPOTIFY_API_BASE}/playlists/${playlistId}/tracks?limit=${actualLimit}&offset=${offset}&fields=${encodeURIComponent(fields)}`;
-
-  console.log(`Fetching tracks for playlist ${playlistId}: URL=${url}`); // Add log for debugging URL
 
   try {
     const response = await fetch(url, {
@@ -248,7 +250,6 @@ export async function getPlaylistTracks(
           playlistId,
           limit: actualLimit,
           offset,
-          totalTracks,
           url,
           responseBodyText,
         }, // Log relevant parameters
@@ -261,7 +262,7 @@ export async function getPlaylistTracks(
       // Handle potential 400 Bad Request if offset is invalid (though Math.max should prevent negative)
       if (response.status === 400) {
         throw new Error(
-          `Bad request fetching tracks for playlist ${playlistId} (potentially invalid offset: ${offset} for total: ${totalTracks}). Status: 400. Body: ${responseBodyText}`,
+          `Bad request fetching tracks for playlist ${playlistId} at offset ${offset}. Status: 400. Body: ${responseBodyText}`,
         );
       }
       if (response.status === 429) {
@@ -276,7 +277,12 @@ export async function getPlaylistTracks(
     }
 
     const data = JSON.parse(responseBodyText);
-    return (data?.items ?? []).filter((item: any) => item?.track);
+    return {
+      items: (data?.items ?? []).filter(
+        (item: any) => item?.track?.type === "track",
+      ),
+      next: data?.next ?? null,
+    };
   } catch (error) {
     if (error instanceof SpotifyRateLimitError) {
       console.warn(`Rate limit hit for playlist ${playlistId}.`);
@@ -290,6 +296,33 @@ export async function getPlaylistTracks(
       `Failed to fetch tracks for playlist ${playlistId}: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+/**
+ * Fetches every track item from a playlist so callers can sort by added_at exactly.
+ */
+export async function getPlaylistTracks(
+  playlistId: string,
+  accessToken: string,
+): Promise<any[]> {
+  const tracks: any[] = [];
+  let offset = 0;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const page = await getPlaylistTracksPage(
+      playlistId,
+      accessToken,
+      offset,
+      SPOTIFY_PAGE_LIMIT,
+    );
+
+    tracks.push(...page.items);
+    hasNextPage = Boolean(page.next);
+    offset += SPOTIFY_PAGE_LIMIT;
+  }
+
+  return tracks;
 }
 
 // --- Date formatting functions remain the same ---

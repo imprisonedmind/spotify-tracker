@@ -26,8 +26,11 @@ export function RecentTracksDisplay({
 
   // Define a stable key generation function
   const getTrackKey = (track: Track): string => {
-    // Combine track ID and added_at for uniqueness, fallback if needed
-    return `${track.id || "no-id"}-${track.added_at || "no-date"}`;
+    return [
+      track.playlist?.id || "no-playlist",
+      track.id || "no-id",
+      track.added_at || "no-date",
+    ].join("-");
   };
 
   return (

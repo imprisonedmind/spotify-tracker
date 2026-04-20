@@ -92,11 +92,11 @@ export function BaseGroupedDisplay<T>({
             </h2>
           </div>
           <div className="space-y-2">
-            {group.items.map((item) => {
+            {group.items.map((item, index) => {
               // Determine if the current group is "Today"
               const isToday = group.display === "Today";
               return (
-                <div key={getItemKey(item)}>
+                <div key={`${getItemKey(item)}-${index}`}>
                   {/* Pass the isToday flag to the renderItem function */}
                   {renderItem(item, isToday)}
                 </div>

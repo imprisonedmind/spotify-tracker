@@ -13,12 +13,37 @@ import { notFound } from "next/navigation"; // Import notFound
 
 // Constants for data fetching strategy
 const MIN_RECENT_TRACKS = 20; // Final number of tracks to display
-const TRACK_FETCH_LIMIT_PER_PLAYLIST = 30; // Fetch slightly more per playlist initially
+const PLAYLIST_TRACK_FETCH_CONCURRENCY = 4;
 
 // Define the possible outcomes of the data fetching operation
 type FetchUserDataResult =
   | { profile: UserProfile; recentTracks: Track[]; rateLimited: false }
   | { profile?: UserProfile; recentTracks: []; rateLimited: true }; // Profile might be fetched before rate limit
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker(),
+  );
+
+  await Promise.all(workers);
+  return results;
+}
 
 // fetchUserProfileForMeta remains the same (could be removed if fetchUserData covers all needs)
 export async function fetchUserProfileForMeta(
@@ -159,55 +184,54 @@ export async function fetchUserData(
     // Wrap track fetching in its own try/catch to handle potential rate limits here
     let recentTracks: Track[] = [];
     try {
-      const trackFetchPromises = ownedPlaylists.map(async (playlist) => {
-        // Note: getPlaylistTracks throws SpotifyRateLimitError if it hits 429
-        const tracks = await getPlaylistTracks(
-          playlist.id,
-          accessToken,
-          TRACK_FETCH_LIMIT_PER_PLAYLIST,
-        );
-        return tracks
-          .map((item): Track | null => {
-            if (!item || !item.track || !item.added_at) {
-              console.warn(
-                `Skipping invalid track item in playlist ${playlist.id}:`,
-                item,
-              );
-              return null;
-            }
-            const trackData = item.track;
-            if (
-              !trackData.id ||
-              !trackData.name ||
-              !trackData.artists ||
-              !trackData.album
-            ) {
-              console.warn(
-                `Skipping track with missing core data in playlist ${playlist.id}:`,
-                trackData,
-              );
-              return null;
-            }
-            return {
-              id: trackData.id,
-              name: trackData.name,
-              artists: trackData.artists,
-              album: trackData.album,
-              external_urls: trackData.external_urls,
-              duration_ms: trackData.duration_ms,
-              preview_url: trackData.preview_url ?? null,
-              added_at: item.added_at,
-              playlist: {
-                id: playlist.id,
-                name: playlist.name,
-                external_urls: playlist.external_urls,
-              },
-            };
-          })
-          .filter((track): track is Track => track !== null);
-      });
+      const trackArrays = await mapWithConcurrency(
+        ownedPlaylists,
+        PLAYLIST_TRACK_FETCH_CONCURRENCY,
+        async (playlist) => {
+          // Note: getPlaylistTracks throws SpotifyRateLimitError if it hits 429
+          const tracks = await getPlaylistTracks(playlist.id, accessToken);
+          return tracks
+            .map((item): Track | null => {
+              if (!item || !item.track || !item.added_at) {
+                console.warn(
+                  `Skipping invalid track item in playlist ${playlist.id}:`,
+                  item,
+                );
+                return null;
+              }
+              const trackData = item.track;
+              if (
+                !trackData.id ||
+                !trackData.name ||
+                !trackData.artists ||
+                !trackData.album
+              ) {
+                console.warn(
+                  `Skipping track with missing core data in playlist ${playlist.id}:`,
+                  trackData,
+                );
+                return null;
+              }
+              return {
+                id: trackData.id,
+                name: trackData.name,
+                artists: trackData.artists,
+                album: trackData.album,
+                external_urls: trackData.external_urls,
+                duration_ms: trackData.duration_ms,
+                preview_url: trackData.preview_url ?? null,
+                added_at: item.added_at,
+                playlist: {
+                  id: playlist.id,
+                  name: playlist.name,
+                  external_urls: playlist.external_urls,
+                },
+              };
+            })
+            .filter((track): track is Track => track !== null);
+        },
+      );
 
-      const trackArrays = await Promise.all(trackFetchPromises);
       const allRecentTracks = trackArrays
         .flat()
         .filter((track): track is Track => !!track?.added_at)
@@ -233,12 +257,14 @@ export async function fetchUserData(
       }
     }
 
-    // --- Final Return ---
-    // Return based on the rateLimitOccurred flag status
+    if (rateLimitOccurred) {
+      return { profile: enhancedProfile, recentTracks: [], rateLimited: true };
+    }
+
     return {
       profile: enhancedProfile,
       recentTracks,
-      rateLimited: rateLimitOccurred,
+      rateLimited: false,
     };
   } catch (error) {
     // This outer catch primarily handles errors in Phase 1 (Token/Profile)
