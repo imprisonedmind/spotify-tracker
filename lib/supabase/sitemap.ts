@@ -1,20 +1,18 @@
 // FILE: lib/supabase/sitemap.ts
 import { createClient } from "@supabase/supabase-js";
 
-// Ensure environment variables are set
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl) {
-  throw new Error("Missing env.NEXT_PUBLIC_SUPABASE_URL");
-}
-if (!supabaseServiceRoleKey) {
-  throw new Error("Missing env.SUPABASE_SERVICE_ROLE_KEY");
-}
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey);
-
 const SITEMAP_TABLE = "sitemap_entries";
+
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, supabaseServiceRoleKey);
+}
 
 /**
  * Represents a single entry retrieved for sitemap generation.
@@ -38,6 +36,15 @@ export async function recordSitemapPath(
 ): Promise<void> {
   if (!path || typeof path !== "string" || !path.startsWith("/")) {
     console.warn("recordSitemapPath: Invalid path provided.", { path });
+    return;
+  }
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  if (!supabaseAdmin) {
+    console.warn(
+      "recordSitemapPath: Supabase environment variables are not configured.",
+    );
     return;
   }
 
@@ -69,6 +76,15 @@ export async function recordSitemapPath(
  * @returns {Promise<SitemapDbEntry[]>} A promise resolving to an array of sitemap entries.
  */
 export async function fetchSitemapPaths(): Promise<SitemapDbEntry[]> {
+  const supabaseAdmin = getSupabaseAdmin();
+
+  if (!supabaseAdmin) {
+    console.warn(
+      "fetchSitemapPaths: Supabase environment variables are not configured.",
+    );
+    return [];
+  }
+
   const { data, error } = await supabaseAdmin
     .from(SITEMAP_TABLE)
     .select("path, image_url") // Select both path and image_url

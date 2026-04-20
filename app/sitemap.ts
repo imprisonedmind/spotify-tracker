@@ -1,6 +1,7 @@
 // FILE: app/sitemap.ts
 import type { MetadataRoute } from "next";
-import { fetchSitemapPaths, SitemapDbEntry } from "@/lib/supabase/sitemap"; // Import type
+import { fetchSitemapPaths } from "@/lib/supabase/sitemap";
+import type { SitemapDbEntry } from "@/lib/supabase/sitemap";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ||
